@@ -18,6 +18,12 @@
             error = String(e);
         }
     });
+
+    function openInNewTab(file: FileData) {
+        const blob = new Blob([file.content], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+    }
 </script>
 
 <div class="p-4">
@@ -27,14 +33,16 @@
         <div class="text-red-500">Error: {error}</div>
     {/if}
 
-    {#each files as file}
-        <div class="mb-8 border rounded-lg p-4">
-            <h2 class="text-xl font-semibold mb-2">{file.name}</h2>
-            <pre class="bg-gray-100 p-4 rounded overflow-x-auto">
-                <code>{file.content}</code>
-            </pre>
-        </div>
-    {/each}
+    <div class="grid grid-cols-3 gap-4">
+        {#each files as file}
+            <div 
+                class="border rounded-lg p-4 cursor-pointer hover:bg-gray-100"
+                on:click={() => openInNewTab(file)}
+            >
+                <h2 class="text-xl font-semibold">{file.name}</h2>
+            </div>
+        {/each}
+    </div>
 
     {#if files.length === 0 && !error}
         <div class="text-gray-500">No Svelte files found in the directory</div>
