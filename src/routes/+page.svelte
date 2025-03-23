@@ -186,9 +186,14 @@
                 <div class="text-red-500 text-xs mb-2">{searchError}</div>
             {/if}
 
-            <div class="grid grid-cols-3 gap-2">
+            <div class="flex flex-wrap items-start gap-2">
                 {#each cycles[currentCycleIndex]?.components || [] as component}
-                    <div class="{expandedComponents.has(component.name) ? 'w-fit max-w-[800px]' : 'col-span-1'} border rounded overflow-hidden transition-all duration-200 bg-white shadow-sm">
+                    <div 
+                        class="{expandedComponents.has(component.name) 
+                            ? 'w-fit max-w-[800px]' 
+                            : 'w-40'} 
+                        border rounded overflow-hidden transition-all duration-200 bg-white shadow-sm flex-shrink-0"
+                    >
                         <div 
                             class="bg-gray-100 p-1 cursor-pointer hover:bg-gray-200 flex justify-between items-center"
                             on:click={() => toggleComponent(component.name)}
