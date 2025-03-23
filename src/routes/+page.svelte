@@ -188,18 +188,18 @@
 
             <div class="grid grid-cols-3 gap-2">
                 {#each cycles[currentCycleIndex]?.components || [] as component}
-                    <div class="{expandedComponents.has(component.name) ? 'col-span-3' : 'col-span-1'} border rounded overflow-hidden transition-all duration-200 bg-white shadow-sm">
+                    <div class="{expandedComponents.has(component.name) ? 'w-fit max-w-[800px]' : 'col-span-1'} border rounded overflow-hidden transition-all duration-200 bg-white shadow-sm">
                         <div 
-                            class="bg-gray-100 p-1.5 cursor-pointer hover:bg-gray-200 flex justify-between items-center"
+                            class="bg-gray-100 p-1 cursor-pointer hover:bg-gray-200 flex justify-between items-center"
                             on:click={() => toggleComponent(component.name)}
                         >
-                            <h3 class="font-semibold text-gray-700 text-sm">{component.name}</h3>
-                            <span class="text-gray-600 text-sm">
+                            <h3 class="font-semibold text-gray-700 text-xs px-1">{component.name}</h3>
+                            <span class="text-gray-600 text-xs px-1">
                                 {expandedComponents.has(component.name) ? '▼' : '▶'}
                             </span>
                         </div>
                         {#if expandedComponents.has(component.name)}
-                            <pre class="p-2 bg-white whitespace-pre-wrap text-sm">
+                            <pre class="p-1 bg-white whitespace-pre-wrap text-xs overflow-x-auto">
                                 <code>{component.content}</code>
                             </pre>
                         {/if}
