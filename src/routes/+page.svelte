@@ -186,28 +186,32 @@
                 <div class="text-red-500 text-xs mb-2">{searchError}</div>
             {/if}
 
-            <div class="flex flex-wrap items-start gap-2">
+            <div class="columns-[200px] gap-2">
                 {#each cycles[currentCycleIndex]?.components || [] as component}
                     <div 
-                        class="{expandedComponents.has(component.name) 
-                            ? 'w-fit max-w-[800px]' 
-                            : 'w-40'} 
-                        border rounded overflow-hidden transition-all duration-200 bg-white shadow-sm flex-shrink-0"
+                        class="break-inside-avoid mb-2 inline-block w-full"
                     >
                         <div 
-                            class="bg-gray-100 p-1 cursor-pointer hover:bg-gray-200 flex justify-between items-center"
-                            on:click={() => toggleComponent(component.name)}
+                            class="{expandedComponents.has(component.name) 
+                                ? 'w-fit max-w-[800px]' 
+                                : 'w-full'} 
+                            border rounded overflow-hidden transition-all duration-200 bg-white shadow-sm"
                         >
-                            <h3 class="font-semibold text-gray-700 text-xs px-1">{component.name}</h3>
-                            <span class="text-gray-600 text-xs px-1">
-                                {expandedComponents.has(component.name) ? '▼' : '▶'}
-                            </span>
+                            <div 
+                                class="bg-gray-100 p-1 cursor-pointer hover:bg-gray-200 flex justify-between items-center"
+                                on:click={() => toggleComponent(component.name)}
+                            >
+                                <h3 class="font-semibold text-gray-700 text-xs px-1">{component.name}</h3>
+                                <span class="text-gray-600 text-xs px-1">
+                                    {expandedComponents.has(component.name) ? '▼' : '▶'}
+                                </span>
+                            </div>
+                            {#if expandedComponents.has(component.name)}
+                                <pre class="p-1 bg-white whitespace-pre-wrap text-xs overflow-x-auto">
+                                    <code>{component.content}</code>
+                                </pre>
+                            {/if}
                         </div>
-                        {#if expandedComponents.has(component.name)}
-                            <pre class="p-1 bg-white whitespace-pre-wrap text-xs overflow-x-auto">
-                                <code>{component.content}</code>
-                            </pre>
-                        {/if}
                     </div>
                 {/each}
             </div>
