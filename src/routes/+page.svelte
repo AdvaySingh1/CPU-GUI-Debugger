@@ -117,63 +117,63 @@
     }
 </script>
 
-<div class="p-4 bg-gray-50">
-    <h1 class="text-3xl font-bold mb-4 text-gray-800">470 GUI Debugger</h1>
+<div class="p-2 bg-gray-50">
+    <h1 class="text-2xl font-bold mb-2 text-gray-800">470 GUI Debugger</h1>
     
     {#if error}
-        <div class="text-red-500">Error: {error}</div>
+        <div class="text-red-500 text-sm">Error: {error}</div>
     {/if}
 
     {#if !selectedFile}
-        <div class="grid grid-cols-3 gap-4">
+        <div class="grid grid-cols-4 gap-2">
             {#each files as file}
                 <div 
-                    class="border rounded-lg p-4 cursor-pointer hover:bg-gray-200 bg-white shadow-sm"
+                    class="border rounded p-2 cursor-pointer hover:bg-gray-200 bg-white shadow-sm"
                     on:click={() => viewFile(file)}
                 >
-                    <h2 class="text-xl font-semibold text-gray-700">{getDisplayFileName(file.name)}</h2>
+                    <h2 class="text-base font-semibold text-gray-700">{getDisplayFileName(file.name)}</h2>
                 </div>
             {/each}
         </div>
     {:else}
-        <div class="mb-4 flex items-center gap-4">
+        <div class="mb-2 flex items-center gap-2">
             <button 
-                class="bg-gray-700 text-white px-4 py-2 rounded hover:bg-gray-600"
+                class="bg-gray-700 text-white px-2 py-1 rounded text-sm hover:bg-gray-600"
                 on:click={() => selectedFile = null}
             >
                 Back to Files
             </button>
-            <h2 class="text-2xl font-semibold text-gray-700">{getDisplayFileName(selectedFile.name)}</h2>
+            <h2 class="text-lg font-semibold text-gray-700">{getDisplayFileName(selectedFile.name)}</h2>
         </div>
 
-        <div class="border rounded-lg p-4 bg-white shadow-sm">
-            <div class="flex items-center justify-between mb-4">
-                <div class="flex gap-4 items-center">
-                    <div class="flex items-center gap-2">
+        <div class="border rounded p-2 bg-white shadow-sm">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex gap-2 items-center">
+                    <div class="flex items-center gap-1">
                         <input
                             type="number"
                             bind:value={searchCycle}
                             placeholder="Search cycle..."
-                            class="px-2 py-1 border rounded w-32 focus:outline-none focus:ring-2 focus:ring-gray-400"
+                            class="px-1 py-0.5 border rounded w-24 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
                             on:keydown={(e) => e.key === 'Enter' && searchByCycle()}
                         />
                         <button
-                            class="bg-gray-700 text-white px-3 py-1 rounded hover:bg-gray-600"
+                            class="bg-gray-700 text-white px-2 py-0.5 rounded text-sm hover:bg-gray-600"
                             on:click={searchByCycle}
                         >
                             Go
                         </button>
                     </div>
                     <button 
-                        class="bg-gray-200 px-4 py-2 rounded {currentCycleIndex === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-300'}"
+                        class="bg-gray-200 px-2 py-0.5 rounded text-sm {currentCycleIndex === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-300'}"
                         on:click={prevCycle}
                         disabled={currentCycleIndex === 0}
                     >
                         &lt;
                     </button>
-                    <span class="text-gray-700">Cycle {cycles[currentCycleIndex]?.cycle}</span>
+                    <span class="text-gray-700 text-sm">Cycle {cycles[currentCycleIndex]?.cycle}</span>
                     <button 
-                        class="bg-gray-200 px-4 py-2 rounded {currentCycleIndex === cycles.length - 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-300'}"
+                        class="bg-gray-200 px-2 py-0.5 rounded text-sm {currentCycleIndex === cycles.length - 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-300'}"
                         on:click={nextCycle}
                         disabled={currentCycleIndex === cycles.length - 1}
                     >
@@ -183,23 +183,23 @@
             </div>
 
             {#if searchError}
-                <div class="text-red-500 text-sm mb-4">{searchError}</div>
+                <div class="text-red-500 text-xs mb-2">{searchError}</div>
             {/if}
 
-            <div class="grid grid-cols-3 gap-4">
+            <div class="grid grid-cols-3 gap-2">
                 {#each cycles[currentCycleIndex]?.components || [] as component}
-                    <div class="{expandedComponents.has(component.name) ? 'col-span-3' : 'col-span-1'} border rounded-lg overflow-hidden transition-all duration-200 bg-white shadow-sm">
+                    <div class="{expandedComponents.has(component.name) ? 'col-span-3' : 'col-span-1'} border rounded overflow-hidden transition-all duration-200 bg-white shadow-sm">
                         <div 
-                            class="bg-gray-100 p-3 cursor-pointer hover:bg-gray-200 flex justify-between items-center"
+                            class="bg-gray-100 p-1.5 cursor-pointer hover:bg-gray-200 flex justify-between items-center"
                             on:click={() => toggleComponent(component.name)}
                         >
-                            <h3 class="font-semibold text-gray-700">{component.name}</h3>
-                            <span class="text-gray-600">
+                            <h3 class="font-semibold text-gray-700 text-sm">{component.name}</h3>
+                            <span class="text-gray-600 text-sm">
                                 {expandedComponents.has(component.name) ? '▼' : '▶'}
                             </span>
                         </div>
                         {#if expandedComponents.has(component.name)}
-                            <pre class="p-4 bg-white whitespace-pre-wrap">
+                            <pre class="p-2 bg-white whitespace-pre-wrap text-sm">
                                 <code>{component.content}</code>
                             </pre>
                         {/if}
@@ -210,6 +210,6 @@
     {/if}
 
     {#if files.length === 0 && !error}
-        <div class="text-gray-500">No files found in the directory</div>
+        <div class="text-gray-500 text-sm">No files found in the directory</div>
     {/if}
 </div>
