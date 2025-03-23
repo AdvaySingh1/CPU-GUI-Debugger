@@ -144,9 +144,9 @@
                 </div>
             </div>
 
-            <div class="space-y-2">
+            <div class="grid grid-cols-3 gap-4">
                 {#each cycles[currentCycleIndex]?.components || [] as component}
-                    <div class="border rounded-lg overflow-hidden">
+                    <div class="{expandedComponents.has(component.name) ? 'col-span-3' : 'col-span-1'} border rounded-lg overflow-hidden transition-all duration-200">
                         <div 
                             class="bg-gray-100 p-3 cursor-pointer hover:bg-gray-200 flex justify-between items-center"
                             on:click={() => toggleComponent(component.name)}
