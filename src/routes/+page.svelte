@@ -6,9 +6,14 @@
         content: string;
     };
 
+    type ComponentData = {
+        name: string;
+        content: string;
+    };
+
     type CycleData = {
         cycle: number;
-        content: string;
+        components: ComponentData[];
     };
 
     let files: FileData[] = [];
@@ -16,6 +21,7 @@
     let selectedFile: FileData | null = null;
     let cycles: CycleData[] = [];
     let currentCycleIndex = 0;
+    let expandedComponents = new Set<string>();
 
     onMount(async () => {
         try {
@@ -27,6 +33,21 @@
         }
     });
 
+    function parseComponents(content: string): ComponentData[] {
+        const componentRegex = /\*\*\* (.+?)\n([\s\S]*?)(?=\*\*\* |$)/g;
+        const components: ComponentData[] = [];
+        let match;
+
+        while ((match = componentRegex.exec(content))) {
+            components.push({
+                name: match[1].trim(),
+                content: match[2].trim()
+            });
+        }
+
+        return components;
+    }
+
     function parseCycles(content: string): CycleData[] {
         const cycleRegex = /\$\$\$ (\d+)\n([\s\S]*?)(?=\$\$\$ \d+|$)/g;
         const cycles: CycleData[] = [];
@@ -35,7 +56,7 @@
         while ((match = cycleRegex.exec(content)) !== null) {
             cycles.push({
                 cycle: parseInt(match[1]),
-                content: match[2].trim()
+                components: parseComponents(match[2])
             });
         }
 
@@ -46,18 +67,30 @@
         selectedFile = file;
         cycles = parseCycles(file.content);
         currentCycleIndex = 0;
+        expandedComponents.clear();
     }
 
     function nextCycle() {
         if (currentCycleIndex < cycles.length - 1) {
             currentCycleIndex++;
+            // Removed expandedComponents.clear()
         }
     }
 
     function prevCycle() {
         if (currentCycleIndex > 0) {
             currentCycleIndex--;
+            // Removed expandedComponents.clear()
         }
+    }
+
+    function toggleComponent(componentName: string) {
+        if (expandedComponents.has(componentName)) {
+            expandedComponents.delete(componentName);
+        } else {
+            expandedComponents.add(componentName);
+        }
+        expandedComponents = expandedComponents; // trigger reactivity
     }
 </script>
 
@@ -110,9 +143,27 @@
                     </button>
                 </div>
             </div>
-            <pre class="bg-gray-100 p-4 rounded overflow-x-auto whitespace-pre-wrap">
-                <code>{cycles[currentCycleIndex]?.content || 'No content available'}</code>
-            </pre>
+
+            <div class="space-y-2">
+                {#each cycles[currentCycleIndex]?.components || [] as component}
+                    <div class="border rounded-lg overflow-hidden">
+                        <div 
+                            class="bg-gray-100 p-3 cursor-pointer hover:bg-gray-200 flex justify-between items-center"
+                            on:click={() => toggleComponent(component.name)}
+                        >
+                            <h3 class="font-semibold">{component.name}</h3>
+                            <span class="text-gray-600">
+                                {expandedComponents.has(component.name) ? '▼' : '▶'}
+                            </span>
+                        </div>
+                        {#if expandedComponents.has(component.name)}
+                            <pre class="p-4 bg-white whitespace-pre-wrap">
+                                <code>{component.content}</code>
+                            </pre>
+                        {/if}
+                    </div>
+                {/each}
+            </div>
         </div>
     {/if}
 
