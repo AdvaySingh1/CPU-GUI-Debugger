@@ -115,6 +115,13 @@
         searchError = null;
         currentCycleIndex = foundIndex;
     }
+
+    function jumpToCycle(cycleNum: number) {
+        const foundIndex = cycles.findIndex(c => c.cycle === cycleNum);
+        if (foundIndex !== -1) {
+            currentCycleIndex = foundIndex;
+        }
+    }
 </script>
 
 <div class="p-2 bg-gray-50">
@@ -193,7 +200,9 @@
                     >
                         <div 
                             class="{expandedComponents.has(component.name) 
-                                ? 'w-fit max-w-[800px]' 
+                                ? component.name.toLowerCase().includes('free list')
+                                    ? 'w-[280px]'
+                                    : 'w-fit max-w-[800px]' 
                                 : 'w-full'} 
                             border rounded overflow-hidden transition-all duration-200 bg-white shadow-sm"
                         >
