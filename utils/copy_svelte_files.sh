@@ -7,6 +7,7 @@ USERNAME=$1
 REMOTE_PATH=$2
 LOCAL_PATH=~/470/gui_debugger/
 SERVER="login-course.engin.umich.edu"
+# SERVER="oncampus-course.engin.umich.edu"
 
 # Create local directory if it doesn't exist
 mkdir -p "$LOCAL_PATH"

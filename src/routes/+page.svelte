@@ -16,14 +16,21 @@
         components: ComponentData[];
     };
 
+    type Position = {
+        x: number;
+        y: number;
+    };
+
     let files: FileData[] = [];
     let error: string | null = null;
     let selectedFile: FileData | null = null;
     let cycles: CycleData[] = [];
     let currentCycleIndex = 0;
     let expandedComponents = new Set<string>();
+    let componentPositions = new Map<string, Position>();
     let searchCycle = '';
     let searchError: string | null = null;
+    let isDragging = false;
 
     function getDisplayFileName(fullName: string): string {
         return fullName.replace('_svelte', '');
@@ -116,17 +123,61 @@
         currentCycleIndex = foundIndex;
     }
 
-    function jumpToCycle(cycleNum: number) {
-        const foundIndex = cycles.findIndex(c => c.cycle === cycleNum);
-        if (foundIndex !== -1) {
-            currentCycleIndex = foundIndex;
-        }
+    function startDrag(event: MouseEvent, componentName: string) {
+        // Prevent default to avoid text selection during drag
+        event.preventDefault();
+
+        // Stop event propagation to prevent conflicts with other handlers
+        event.stopPropagation();
+
+        isDragging = true;
+        const componentElement = document.querySelector(`[data-component="${componentName}"]`) as HTMLElement;
+        if (!componentElement) return;
+
+        // Store the initial mouse position and the component's current position
+        const initialX = event.clientX;
+        const initialY = event.clientY;
+
+        // Get current position or default to the current layout position
+        const currentPos = componentPositions.get(componentName) || {
+            x: componentElement.offsetLeft,
+            y: componentElement.offsetTop
+        };
+
+        // Create the mousemove event handler
+        const handleMouseMove = (moveEvent: MouseEvent) => {
+            if (!isDragging) return;
+
+            // Calculate the new position
+            const newX = currentPos.x + (moveEvent.clientX - initialX);
+            const newY = currentPos.y + (moveEvent.clientY - initialY);
+
+            // Update the component's position
+            componentElement.style.position = 'absolute';
+            componentElement.style.left = `${newX}px`;
+            componentElement.style.top = `${newY}px`;
+            componentElement.style.zIndex = '10';
+
+            // Store the new position
+            componentPositions.set(componentName, { x: newX, y: newY });
+        };
+
+        // Create the mouseup event handler
+        const handleMouseUp = () => {
+            isDragging = false;
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        };
+
+        // Add the event listeners
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
     }
 </script>
 
 <div class="p-2 bg-gray-50">
     <h1 class="text-2xl font-bold mb-2 text-gray-800">470 GUI Debugger</h1>
-    
+
     {#if error}
         <div class="text-red-500 text-sm">Error: {error}</div>
     {/if}
@@ -134,17 +185,19 @@
     {#if !selectedFile}
         <div class="grid grid-cols-4 gap-2">
             {#each files as file}
-                <div 
-                    class="border rounded p-2 cursor-pointer hover:bg-gray-200 bg-white shadow-sm"
+                <button
+                    type="button"
+                    class="border rounded p-2 cursor-pointer hover:bg-gray-200 bg-white shadow-sm text-left"
                     on:click={() => viewFile(file)}
+                    on:keydown={(e) => e.key === 'Enter' && viewFile(file)}
                 >
                     <h2 class="text-base font-semibold text-gray-700">{getDisplayFileName(file.name)}</h2>
-                </div>
+                </button>
             {/each}
         </div>
     {:else}
         <div class="mb-2 flex items-center gap-2">
-            <button 
+            <button
                 class="bg-gray-700 text-white px-2 py-1 rounded text-sm hover:bg-gray-600"
                 on:click={() => selectedFile = null}
             >
@@ -171,7 +224,7 @@
                             Go
                         </button>
                     </div>
-                    <button 
+                    <button
                         class="bg-gray-200 px-2 py-0.5 rounded text-sm {currentCycleIndex === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-300'}"
                         on:click={prevCycle}
                         disabled={currentCycleIndex === 0}
@@ -179,7 +232,7 @@
                         &lt;
                     </button>
                     <span class="text-gray-700 text-sm">Cycle {cycles[currentCycleIndex]?.cycle}</span>
-                    <button 
+                    <button
                         class="bg-gray-200 px-2 py-0.5 rounded text-sm {currentCycleIndex === cycles.length - 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-300'}"
                         on:click={nextCycle}
                         disabled={currentCycleIndex === cycles.length - 1}
@@ -193,28 +246,35 @@
                 <div class="text-red-500 text-xs mb-2">{searchError}</div>
             {/if}
 
-            <div class="columns-[200px] gap-2">
+            <div class="relative min-h-[500px]">
                 {#each cycles[currentCycleIndex]?.components || [] as component}
-                    <div 
-                        class="break-inside-avoid mb-2 inline-block w-full"
+                    <div
+                        class="mb-2 inline-block component-container"
+                        style="{componentPositions.has(component.name) ? `position: absolute; left: ${componentPositions.get(component.name)?.x}px; top: ${componentPositions.get(component.name)?.y}px; z-index: ${expandedComponents.has(component.name) ? '10' : '1'};` : ''}"
+                        data-component={component.name}
+                        role="region"
+                        aria-label={`Component ${component.name}`}
                     >
-                        <div 
-                            class="{expandedComponents.has(component.name) 
+                        <div
+                            class="{expandedComponents.has(component.name)
                                 ? component.name.toLowerCase().includes('free list')
                                     ? 'w-[280px]'
-                                    : 'w-fit max-w-[800px]' 
-                                : 'w-full'} 
+                                    : 'min-w-[300px] max-w-[800px]'
+                                : 'w-[200px]'}
                             border rounded overflow-hidden transition-all duration-200 bg-white shadow-sm"
                         >
-                            <div 
-                                class="bg-gray-100 p-1 cursor-pointer hover:bg-gray-200 flex justify-between items-center"
+                            <button
+                                type="button"
+                                class="component-header bg-gray-100 p-1 cursor-move hover:bg-gray-200 flex justify-between items-center w-full text-left"
                                 on:click={() => toggleComponent(component.name)}
+                                on:keydown={(e) => e.key === 'Enter' && toggleComponent(component.name)}
+                                on:mousedown={(e) => startDrag(e, component.name)}
                             >
                                 <h3 class="font-semibold text-gray-700 text-xs px-1">{component.name}</h3>
                                 <span class="text-gray-600 text-xs px-1">
                                     {expandedComponents.has(component.name) ? '▼' : '▶'}
                                 </span>
-                            </div>
+                            </button>
                             {#if expandedComponents.has(component.name)}
                                 <pre class="p-1 bg-white whitespace-pre-wrap text-xs overflow-x-auto">
                                     <code>{component.content}</code>
