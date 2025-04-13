@@ -31,6 +31,11 @@
         pattern: string;
     };
 
+    type RetireEnableInfo = {
+        lastActiveCycle: number;
+        pattern: string;
+    };
+
     const PCSearchTarget = {
         Dispatch: 'Dispatch',
         IssueALU: 'Issue-ALU',
@@ -55,6 +60,7 @@
     let isDragging = false;
     let retireSignals: RetireSignalInfo[] = [];
     let lastDispatchActive: DispatchInfo | null = null;
+    let lastRetireActive: RetireEnableInfo | null = null;
     let foundPCEntry: string | null = null;
     let foundPCComponent: string | null = null;
 
@@ -116,12 +122,13 @@
     function analyzeRetireSignals() {
         retireSignals = [];
         lastDispatchActive = null;
+        lastRetireActive = null;
         const robEntryMap = new Map<number, number>(); // Map of entry index to last active cycle
 
         // Process each cycle
         for (const cycle of cycles) {
-            // Find the ROB Signals component
-            const robComponent = cycle.components.find(comp => comp.name.includes('ROB Signals'));
+            // Find the ROB component (previously named 'ROB Signals')
+            const robComponent = cycle.components.find(comp => comp.name.includes('ROB'));
             if (robComponent) {
                 // Parse the content to find En[x] signals
                 const lines = robComponent.content.split('\n');
@@ -156,6 +163,36 @@
                             };
                         }
                     }
+                }
+            }
+
+            // For the Retire enable signals, we actually need to look at the ROB Signals component
+            // We already processed the ROB Signals component above for individual entries
+            // Now we'll check if any of the entries were enabled in this cycle
+            if (robComponent) {
+                const lines = robComponent.content.split('\n');
+                let anyEnabled = false;
+                let pattern = '';
+
+                // Check if any En[x] signals are high in this cycle
+                for (const line of lines) {
+                    const match = line.match(/En\[(\d+)\]:\s*(\d+)/);
+                    if (match) {
+                        const isEnabled = match[2] === '1';
+                        if (isEnabled) {
+                            anyEnabled = true;
+                        }
+                        // Build the pattern string (e.g., "101" for En[0]=1, En[1]=0, En[2]=1)
+                        pattern += match[2];
+                    }
+                }
+
+                // If any entries were enabled, update the last active cycle
+                if (anyEnabled && pattern) {
+                    lastRetireActive = {
+                        lastActiveCycle: cycle.cycle,
+                        pattern: pattern
+                    };
                 }
             }
         }
@@ -684,16 +721,14 @@
                                     <code>{component.content}</code>
                                 </pre>
 
-                                {#if component.name.includes('ROB Signals') && retireSignals.length > 0}
+                                {#if component.name.includes('ROB')}
                                     <div class="p-2 bg-blue-900 border-t border-blue-700">
-                                        <h4 class="font-semibold text-xs text-blue-200 mb-1">Last Active Retire Signals:</h4>
-                                        <div class="grid grid-cols-3 gap-1 text-xs">
-                                            {#each retireSignals as signal}
-                                                <div class="bg-blue-800 p-1 rounded text-blue-100">
-                                                    Entry[{signal.index}]: Cycle {signal.lastActiveCycle}
-                                                </div>
-                                            {/each}
-                                        </div>
+                                        {#if lastRetireActive}
+                                            <h4 class="font-semibold text-xs text-blue-200 mb-1">Last Cycle With Any Active ROB Enable:</h4>
+                                            <div class="bg-blue-800 p-1 rounded text-xs text-blue-100">
+                                                Cycle {lastRetireActive.lastActiveCycle}: Pattern: {lastRetireActive.pattern}
+                                            </div>
+                                        {/if}
                                     </div>
                                 {/if}
 
@@ -724,12 +759,15 @@
                                     </div>
                                 {/if}
 
-                                {#if component.name.includes('Retire') && foundPCComponent === 'Retire' && foundPCEntry}
+                                {#if component.name.includes('Retire')}
                                     <div class="p-2 bg-purple-900 border-t border-purple-700">
-                                        <h4 class="font-semibold text-xs text-purple-200 mb-1">Found PC Match:</h4>
-                                        <div class="bg-yellow-700 p-1 rounded text-xs border border-yellow-500 text-yellow-100">
-                                            Entry: {foundPCEntry} - PC: {searchPC}
-                                        </div>
+
+                                        {#if foundPCComponent === 'Retire' && foundPCEntry}
+                                            <h4 class="font-semibold text-xs text-purple-200 mb-1">Found PC Match:</h4>
+                                            <div class="bg-yellow-700 p-1 rounded text-xs border border-yellow-500 text-yellow-100">
+                                                Entry: {foundPCEntry} - PC: {searchPC}
+                                            </div>
+                                        {/if}
                                     </div>
                                 {/if}
                             {/if}
