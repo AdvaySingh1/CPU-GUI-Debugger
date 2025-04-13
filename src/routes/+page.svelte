@@ -643,7 +643,17 @@
     }
 </script>
 
-<div class="p-2 bg-gray-900 text-gray-100 min-h-screen">
+<style>
+    :global(body) {
+        background-color: #111827; /* bg-gray-900 */
+        margin: 0;
+        padding: 0;
+        min-height: 100vh;
+        width: 100%;
+    }
+</style>
+
+<div class="p-2 bg-gray-900 text-gray-100 min-h-screen w-full h-full fixed inset-0 overflow-auto">
     <h1 class="text-2xl font-bold mb-2 text-gray-100">470 GUI Debugger</h1>
 
     {#if error}
@@ -747,9 +757,9 @@
                 <div class="text-red-500 text-xs mb-2">{searchError}</div>
             {/if}
 
-            <div class="flex">
+            <div class="flex h-full">
                 <!-- Left sidebar for collapsed components -->
-                <div class="w-[200px] flex flex-col gap-1 pr-2 border-r border-gray-700 mr-2">
+                <div class="w-[200px] flex flex-col gap-1 pr-2 border-r border-gray-700 mr-2 bg-gray-900">
                     <div class="mb-2">
                         <input
                             type="text"
@@ -787,7 +797,7 @@
                 </div>
 
                 <!-- Main content area for expanded components -->
-                <div class="flex-1 relative min-h-[500px]">
+                <div class="flex-1 relative min-h-[500px] bg-gray-900">
                     {#each cycles[currentCycleIndex]?.components || [] as component}
                         <!-- Only show in main area if expanded or focused -->
                         {#if expandedComponents.has(component.name)}
