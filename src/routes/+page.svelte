@@ -31,6 +31,16 @@
         pattern: string;
     };
 
+    const PCSearchTarget = {
+        Dispatch: 'Dispatch',
+        IssueALU: 'Issue-ALU',
+        IssueMULT: 'Issue-MULT',
+        IssueLOAD: 'Issue-LOAD',
+        Retire: 'Retire'
+    } as const;
+
+    type PCSearchTargetType = typeof PCSearchTarget[keyof typeof PCSearchTarget];
+
     let files: FileData[] = [];
     let error: string | null = null;
     let selectedFile: FileData | null = null;
@@ -40,11 +50,13 @@
     let componentPositions = new Map<string, Position>();
     let searchCycle = '';
     let searchPC = '';
+    let searchPCTarget: PCSearchTargetType = PCSearchTarget.Dispatch;
     let searchError: string | null = null;
     let isDragging = false;
     let retireSignals: RetireSignalInfo[] = [];
     let lastDispatchActive: DispatchInfo | null = null;
     let foundPCEntry: string | null = null;
+    let foundPCComponent: string | null = null;
 
     function getDisplayFileName(fullName: string): string {
         return fullName.replace('_svelte', '');
@@ -97,6 +109,7 @@
         expandedComponents.clear();
         searchPC = '';
         foundPCEntry = null;
+        foundPCComponent = null;
         analyzeRetireSignals();
     }
 
@@ -207,41 +220,278 @@
 
         // Reset the found PC entry
         foundPCEntry = null;
+        foundPCComponent = null;
 
-        // Normalize the PC value (remove leading zeros)
-        const normalizedPC = searchPC.replace(/^0+/, '');
+        // Normalize the PC value (remove leading zeros and convert to lowercase for case-insensitive comparison)
+        const normalizedPC = searchPC.replace(/^0+/, '').toLowerCase();
+
+        // Search for PC in the selected component
 
         // Search through all cycles
         for (let i = 0; i < cycles.length; i++) {
             const cycle = cycles[i];
-            // Find the Dispatch component
-            const dispatchComponent = cycle.components.find(comp => comp.name.includes('Dispatch'));
-            if (!dispatchComponent) continue;
 
-            // Parse the content to find PC values
-            const content = dispatchComponent.content;
-            const rsEntryMatches = [...content.matchAll(/RS_ENTRY\s*\[(\d+)\][\s\S]*?PC:\s*([0-9a-fA-F]+)/g)];
+            // Search based on the selected target
+            let result = false;
+            switch (searchPCTarget) {
+                case PCSearchTarget.Dispatch:
+                    result = searchDispatchPC(cycle, normalizedPC, i);
+                    break;
 
-            // Check each PC value
-            for (const match of rsEntryMatches) {
-                const entryIndex = match[1];
-                // Get the PC value and normalize it (remove leading zeros)
-                const pcValue = match[2].replace(/^0+/, '');
+                case PCSearchTarget.IssueALU:
+                    result = searchIssueALUPC(cycle, normalizedPC, i);
+                    break;
 
-                // If we found a match
-                if (pcValue === normalizedPC) {
-                    searchError = null;
-                    currentCycleIndex = i;
-                    foundPCEntry = `RS_ENTRY[${entryIndex}]`;
-                    // Ensure the Dispatch component is expanded
-                    expandedComponents.add('Dispatch');
-                    return;
-                }
+                case PCSearchTarget.IssueMULT:
+                    result = searchIssueMULTPC(cycle, normalizedPC, i);
+                    break;
+
+                case PCSearchTarget.IssueLOAD:
+                    result = searchIssueLOADPC(cycle, normalizedPC, i);
+                    break;
+
+                case PCSearchTarget.Retire:
+                    result = searchRetirePC(cycle, normalizedPC, i);
+                    break;
+            }
+
+            if (result) {
+                return;
             }
         }
 
         // If we get here, no match was found
-        searchError = `PC ${searchPC} not found in any dispatch entry`;
+        searchError = `PC ${searchPC} not found in any ${searchPCTarget} entry`;
+    }
+
+    function searchDispatchPC(cycle: CycleData, normalizedPC: string, cycleIndex: number): boolean {
+        // Find the Dispatch component
+        const dispatchComponent = cycle.components.find(comp => comp.name.includes('Dispatch'));
+        if (!dispatchComponent) return false;
+
+        // Parse the content to find PC values
+        const content = dispatchComponent.content;
+        const rsEntryMatches = [...content.matchAll(/RS_ENTRY\s*\[(\d+)\][\s\S]*?PC:\s*([0-9a-fA-F]+)/g)];
+
+        // Check each PC value
+        for (const match of rsEntryMatches) {
+            const entryIndex = match[1];
+            // Get the PC value and normalize it (remove leading zeros and convert to lowercase)
+            const pcValue = match[2].toLowerCase().replace(/^0+/, '');
+
+            // If we found a match
+            if (pcValue === normalizedPC) {
+                searchError = null;
+                currentCycleIndex = cycleIndex;
+                foundPCEntry = `RS_ENTRY[${entryIndex}]`;
+                foundPCComponent = 'Dispatch';
+                // Ensure the component is expanded
+                expandedComponents.add('Dispatch');
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    function searchIssueALUPC(cycle: CycleData, normalizedPC: string, cycleIndex: number): boolean {
+        // Find the Issue component
+        const issueComponent = cycle.components.find(comp => comp.name.includes('Issue'));
+        if (!issueComponent) return false;
+
+        // Parse the content to find ALU packet PC values
+        const content = issueComponent.content;
+        const aluMatches = [...content.matchAll(/ISSUE_EXECUTE_ALU_PACKET ALU\s*\[(\d+)\][\s\S]*?PC:\s*([0-9a-fA-F]+)/g)];
+
+        // Check each PC value
+        for (const match of aluMatches) {
+            const entryIndex = match[1];
+            // Get the PC value and normalize it (remove leading zeros and convert to lowercase)
+            const pcValue = match[2].toLowerCase().replace(/^0+/, '');
+
+            // If we found a match
+            if (pcValue === normalizedPC) {
+                searchError = null;
+                currentCycleIndex = cycleIndex;
+                foundPCEntry = `ALU[${entryIndex}]`;
+                foundPCComponent = 'Issue';
+                // Ensure the component is expanded
+                expandedComponents.add('Issue');
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    function searchIssueMULTPC(cycle: CycleData, normalizedPC: string, cycleIndex: number): boolean {
+        // Find the Issue component
+        const issueComponent = cycle.components.find(comp => comp.name.includes('Issue'));
+        if (!issueComponent) return false;
+
+        // Parse the content to find MULT packet NPC values
+        const content = issueComponent.content;
+        const multMatches = [...content.matchAll(/ISSUE_EXECUTE_MULT_PACKET MULT\s*\[(\d+)\][\s\S]*?NPC:\s*([0-9a-fA-F]+)/g)];
+
+        // Check each NPC value (subtract 4 to get PC)
+        for (const match of multMatches) {
+            const entryIndex = match[1];
+            // Get the NPC value, convert to number, subtract 4, convert back to hex string without leading zeros
+            const npcValue = match[2];
+            const npcDecimal = parseInt(npcValue, 16);
+            const pcDecimal = npcDecimal - 4;
+            const pcValue = pcDecimal.toString(16).toLowerCase().replace(/^0+/, '');
+
+            // If we found a match
+            if (pcValue === normalizedPC.toLowerCase()) {
+                searchError = null;
+                currentCycleIndex = cycleIndex;
+                foundPCEntry = `MULT[${entryIndex}]`;
+                foundPCComponent = 'Issue';
+                // Ensure the component is expanded
+                expandedComponents.add('Issue');
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    function searchIssueLOADPC(cycle: CycleData, normalizedPC: string, cycleIndex: number): boolean {
+        // Find the Issue component
+        const issueComponent = cycle.components.find(comp => comp.name.includes('Issue'));
+        if (!issueComponent) return false;
+
+        // Parse the content to find LOAD packet NPC values
+        const content = issueComponent.content;
+        const loadMatches = [...content.matchAll(/ISSUE_EXECUTE_LOAD_PACKET LOAD\s*\[(\d+)\][\s\S]*?NPC:\s*([0-9a-fA-F]+)/g)];
+
+        // Check each NPC value (subtract 4 to get PC)
+        for (const match of loadMatches) {
+            const entryIndex = match[1];
+            // Get the NPC value, convert to number, subtract 4, convert back to hex string without leading zeros
+            const npcValue = match[2];
+            const npcDecimal = parseInt(npcValue, 16);
+            const pcDecimal = npcDecimal - 4;
+            const pcValue = pcDecimal.toString(16).toLowerCase().replace(/^0+/, '');
+
+            // If we found a match
+            if (pcValue === normalizedPC.toLowerCase()) {
+                searchError = null;
+                currentCycleIndex = cycleIndex;
+                foundPCEntry = `LOAD[${entryIndex}]`;
+                foundPCComponent = 'Issue';
+                // Ensure the component is expanded
+                expandedComponents.add('Issue');
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    function searchRetirePC(cycle: CycleData, normalizedPC: string, cycleIndex: number): boolean {
+        // Find the Retire component
+        const retireComponent = cycle.components.find(comp => comp.name.includes('Retire'));
+        if (!retireComponent) return false;
+
+        // Parse the content to find COMMIT_PACKET Debug Output entries
+        const content = retireComponent.content;
+
+        // Search for PC in Retire component
+
+        // Simple approach: directly look for NPC values and check if they match PC-4
+        const lines = content.split('\n');
+        let inCommitPacket = false;
+        let currentIndex = '';
+        let currentNPC = '';
+        let currentValid = '';
+
+        for (const line of lines) {
+            const trimmedLine = line.trim();
+
+            // Check if we're entering a COMMIT_PACKET section
+            if (trimmedLine.includes('COMMIT_PACKET Debug Output for index')) {
+                inCommitPacket = true;
+                const indexMatch = trimmedLine.match(/\[(\d+)\]/);
+                if (indexMatch) {
+                    currentIndex = indexMatch[1];
+                }
+                continue;
+            }
+
+            // If we're in a COMMIT_PACKET section, look for NPC and Valid
+            if (inCommitPacket) {
+                // Check for NPC
+                if (trimmedLine.startsWith('NPC:')) {
+                    const npcMatch = trimmedLine.match(/NPC:\s*([0-9a-fA-F]+)/);
+                    if (npcMatch) {
+                        currentNPC = npcMatch[1];
+                        // Found NPC value
+
+                        // Check for a match immediately after finding NPC
+                        const npcDecimal = parseInt(currentNPC, 16);
+                        const pcDecimal = npcDecimal - 4;
+                        const pcValue = pcDecimal.toString(16).toLowerCase().replace(/^0+/, '');
+
+                        // Calculated PC from NPC
+
+                        // If we found a match
+                        if (pcValue === normalizedPC.toLowerCase()) {
+                            // Match found
+                            searchError = null;
+                            currentCycleIndex = cycleIndex;
+                            foundPCEntry = `COMMIT[${currentIndex}]`;
+                            foundPCComponent = 'Retire';
+                            // Ensure the component is expanded
+                            expandedComponents.add('Retire');
+                            return true;
+                        }
+                    }
+                }
+
+                // Check for Valid
+                if (trimmedLine.startsWith('Valid:')) {
+                    const validMatch = trimmedLine.match(/Valid:\s*(\d+)/);
+                    if (validMatch) {
+                        currentValid = validMatch[1];
+                        // Found Valid flag
+
+                        // If we've found NPC, check for a match regardless of Valid flag
+                        if (currentNPC) {
+                            // Calculate PC from NPC (subtract 4)
+                            const npcDecimal = parseInt(currentNPC, 16);
+                            const pcDecimal = npcDecimal - 4;
+                            const pcValue = pcDecimal.toString(16).toLowerCase().replace(/^0+/, '');
+
+                            // If we found a match
+                            if (pcValue === normalizedPC.toLowerCase()) {
+                                searchError = null;
+                                currentCycleIndex = cycleIndex;
+                                foundPCEntry = `COMMIT[${currentIndex}]`;
+                                foundPCComponent = 'Retire';
+                                // Ensure the component is expanded
+                                expandedComponents.add('Retire');
+                                return true;
+                            }
+                        }
+                    }
+                }
+
+                // Check if we're exiting the COMMIT_PACKET section
+                if (trimmedLine.startsWith('Arch Tags') ||
+                    trimmedLine.startsWith('store2Dcache') ||
+                    trimmedLine.startsWith('MEM_COMMAND')) {
+                    inCommitPacket = false;
+                    currentIndex = '';
+                    currentNPC = '';
+                    currentValid = '';
+                }
+            }
+        }
+
+        // If we get here, we didn't find a match
+        return false;
     }
 
     function startDrag(event: MouseEvent, componentName: string) {
@@ -296,8 +546,8 @@
     }
 </script>
 
-<div class="p-2 bg-gray-50">
-    <h1 class="text-2xl font-bold mb-2 text-gray-800">470 GUI Debugger</h1>
+<div class="p-2 bg-gray-900 text-gray-100 min-h-screen">
+    <h1 class="text-2xl font-bold mb-2 text-gray-100">470 GUI Debugger</h1>
 
     {#if error}
         <div class="text-red-500 text-sm">Error: {error}</div>
@@ -308,26 +558,26 @@
             {#each files as file}
                 <button
                     type="button"
-                    class="border rounded p-2 cursor-pointer hover:bg-gray-200 bg-white shadow-sm text-left"
+                    class="border border-gray-700 rounded p-2 cursor-pointer hover:bg-gray-700 bg-gray-800 shadow-sm text-left text-gray-100"
                     on:click={() => viewFile(file)}
                     on:keydown={(e) => e.key === 'Enter' && viewFile(file)}
                 >
-                    <h2 class="text-base font-semibold text-gray-700">{getDisplayFileName(file.name)}</h2>
+                    <h2 class="text-base font-semibold text-gray-100">{getDisplayFileName(file.name)}</h2>
                 </button>
             {/each}
         </div>
     {:else}
         <div class="mb-2 flex items-center gap-2">
             <button
-                class="bg-gray-700 text-white px-2 py-1 rounded text-sm hover:bg-gray-600"
+                class="bg-blue-700 text-white px-2 py-1 rounded text-sm hover:bg-blue-600"
                 on:click={() => selectedFile = null}
             >
                 Back to Files
             </button>
-            <h2 class="text-lg font-semibold text-gray-700">{getDisplayFileName(selectedFile.name)}</h2>
+            <h2 class="text-lg font-semibold text-gray-100">{getDisplayFileName(selectedFile.name)}</h2>
         </div>
 
-        <div class="border rounded p-2 bg-white shadow-sm">
+        <div class="border border-gray-700 rounded p-2 bg-gray-800 shadow-md text-gray-100">
             <div class="flex items-center justify-between mb-2">
                 <div class="flex gap-2 items-center">
                     <div class="flex items-center gap-2">
@@ -336,11 +586,11 @@
                                 type="number"
                                 bind:value={searchCycle}
                                 placeholder="Search cycle..."
-                                class="px-1 py-0.5 border rounded w-24 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+                                class="px-1 py-0.5 border border-gray-600 rounded w-24 text-sm bg-gray-700 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-400"
                                 on:keydown={(e) => e.key === 'Enter' && searchByCycle()}
                             />
                             <button
-                                class="bg-gray-700 text-white px-2 py-0.5 rounded text-sm hover:bg-gray-600"
+                                class="bg-blue-700 text-white px-2 py-0.5 rounded text-sm hover:bg-blue-600"
                                 on:click={searchByCycle}
                             >
                                 Go
@@ -348,32 +598,46 @@
                         </div>
 
                         <div class="flex items-center gap-1">
-                            <input
-                                type="text"
-                                bind:value={searchPC}
-                                placeholder="Search PC..."
-                                class="px-1 py-0.5 border rounded w-24 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
-                                on:keydown={(e) => e.key === 'Enter' && searchByPC()}
-                                on:input={() => { if (!searchPC) foundPCEntry = null; }}
-                            />
-                            <button
-                                class="bg-green-700 text-white px-2 py-0.5 rounded text-sm hover:bg-green-600"
-                                on:click={searchByPC}
-                            >
-                                Find PC
-                            </button>
+                            <div class="flex flex-col gap-1">
+                                <div class="flex items-center gap-1">
+                                    <input
+                                        type="text"
+                                        bind:value={searchPC}
+                                        placeholder="Search PC..."
+                                        class="px-1 py-0.5 border border-gray-600 rounded w-24 text-sm bg-gray-700 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                        on:keydown={(e) => e.key === 'Enter' && searchByPC()}
+                                        on:input={() => { if (!searchPC) { foundPCEntry = null; foundPCComponent = null; } }}
+                                    />
+                                    <button
+                                        class="bg-green-700 text-white px-2 py-0.5 rounded text-sm hover:bg-green-600"
+                                        on:click={searchByPC}
+                                    >
+                                        Find PC
+                                    </button>
+                                </div>
+                                <select
+                                    bind:value={searchPCTarget}
+                                    class="px-1 py-0.5 border border-gray-600 rounded text-xs bg-gray-700 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                >
+                                    <option value={PCSearchTarget.Dispatch}>Dispatch</option>
+                                    <option value={PCSearchTarget.IssueALU}>Issue-ALU</option>
+                                    <option value={PCSearchTarget.IssueMULT}>Issue-MULT</option>
+                                    <option value={PCSearchTarget.IssueLOAD}>Issue-LOAD</option>
+                                    <option value={PCSearchTarget.Retire}>Retire</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
                     <button
-                        class="bg-gray-200 px-2 py-0.5 rounded text-sm {currentCycleIndex === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-300'}"
+                        class="bg-gray-700 text-gray-100 px-2 py-0.5 rounded text-sm {currentCycleIndex === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-600'}"
                         on:click={prevCycle}
                         disabled={currentCycleIndex === 0}
                     >
                         &lt;
                     </button>
-                    <span class="text-gray-700 text-sm">Cycle {cycles[currentCycleIndex]?.cycle}</span>
+                    <span class="text-gray-100 text-sm">Cycle {cycles[currentCycleIndex]?.cycle}</span>
                     <button
-                        class="bg-gray-200 px-2 py-0.5 rounded text-sm {currentCycleIndex === cycles.length - 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-300'}"
+                        class="bg-gray-700 text-gray-100 px-2 py-0.5 rounded text-sm {currentCycleIndex === cycles.length - 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-600'}"
                         on:click={nextCycle}
                         disabled={currentCycleIndex === cycles.length - 1}
                     >
@@ -401,31 +665,31 @@
                                     ? 'w-[280px]'
                                     : 'min-w-[300px] max-w-[800px]'
                                 : 'w-[200px]'}
-                            border rounded overflow-hidden transition-all duration-200 bg-white shadow-sm"
+                            border border-gray-700 rounded overflow-hidden transition-all duration-200 bg-gray-800 shadow-md"
                         >
                             <button
                                 type="button"
-                                class="component-header bg-gray-100 p-1 cursor-move hover:bg-gray-200 flex justify-between items-center w-full text-left"
+                                class="component-header bg-gray-700 p-1 cursor-move hover:bg-gray-600 flex justify-between items-center w-full text-left text-gray-100"
                                 on:click={() => toggleComponent(component.name)}
                                 on:keydown={(e) => e.key === 'Enter' && toggleComponent(component.name)}
                                 on:mousedown={(e) => startDrag(e, component.name)}
                             >
-                                <h3 class="font-semibold text-gray-700 text-xs px-1">{component.name}</h3>
-                                <span class="text-gray-600 text-xs px-1">
+                                <h3 class="font-semibold text-gray-100 text-xs px-1">{component.name}</h3>
+                                <span class="text-gray-300 text-xs px-1">
                                     {expandedComponents.has(component.name) ? '▼' : '▶'}
                                 </span>
                             </button>
                             {#if expandedComponents.has(component.name)}
-                                <pre class="p-1 bg-white whitespace-pre-wrap text-xs overflow-x-auto">
+                                <pre class="p-1 bg-gray-900 text-gray-100 whitespace-pre-wrap text-xs overflow-x-auto">
                                     <code>{component.content}</code>
                                 </pre>
 
                                 {#if component.name.includes('ROB Signals') && retireSignals.length > 0}
-                                    <div class="p-2 bg-blue-50 border-t border-blue-200">
-                                        <h4 class="font-semibold text-xs text-blue-700 mb-1">Last Active Retire Signals:</h4>
+                                    <div class="p-2 bg-blue-900 border-t border-blue-700">
+                                        <h4 class="font-semibold text-xs text-blue-200 mb-1">Last Active Retire Signals:</h4>
                                         <div class="grid grid-cols-3 gap-1 text-xs">
                                             {#each retireSignals as signal}
-                                                <div class="bg-blue-100 p-1 rounded">
+                                                <div class="bg-blue-800 p-1 rounded text-blue-100">
                                                     Entry[{signal.index}]: Cycle {signal.lastActiveCycle}
                                                 </div>
                                             {/each}
@@ -434,20 +698,38 @@
                                 {/if}
 
                                 {#if component.name.includes('Dispatch')}
-                                    <div class="p-2 bg-green-50 border-t border-green-200">
+                                    <div class="p-2 bg-green-900 border-t border-green-700">
                                         {#if lastDispatchActive}
-                                            <h4 class="font-semibold text-xs text-green-700 mb-1">Last Active Dispatch Signal:</h4>
-                                            <div class="bg-green-100 p-1 rounded text-xs mb-2">
+                                            <h4 class="font-semibold text-xs text-green-200 mb-1">Last Active Dispatch Signal:</h4>
+                                            <div class="bg-green-800 p-1 rounded text-xs mb-2 text-green-100">
                                                 Cycle {lastDispatchActive.lastActiveCycle}: En: {lastDispatchActive.pattern}
                                             </div>
                                         {/if}
 
-                                        {#if foundPCEntry}
-                                            <h4 class="font-semibold text-xs text-green-700 mb-1">Found PC Match:</h4>
-                                            <div class="bg-yellow-100 p-1 rounded text-xs border border-yellow-300">
+                                        {#if foundPCEntry && foundPCComponent === 'Dispatch'}
+                                            <h4 class="font-semibold text-xs text-green-200 mb-1">Found PC Match:</h4>
+                                            <div class="bg-yellow-700 p-1 rounded text-xs border border-yellow-500 text-yellow-100">
                                                 Entry: {foundPCEntry} - PC: {searchPC}
                                             </div>
                                         {/if}
+                                    </div>
+                                {/if}
+
+                                {#if component.name.includes('Issue') && foundPCComponent === 'Issue' && foundPCEntry}
+                                    <div class="p-2 bg-blue-900 border-t border-blue-700">
+                                        <h4 class="font-semibold text-xs text-blue-200 mb-1">Found PC Match:</h4>
+                                        <div class="bg-yellow-700 p-1 rounded text-xs border border-yellow-500 text-yellow-100">
+                                            Entry: {foundPCEntry} - PC: {searchPC}
+                                        </div>
+                                    </div>
+                                {/if}
+
+                                {#if component.name.includes('Retire') && foundPCComponent === 'Retire' && foundPCEntry}
+                                    <div class="p-2 bg-purple-900 border-t border-purple-700">
+                                        <h4 class="font-semibold text-xs text-purple-200 mb-1">Found PC Match:</h4>
+                                        <div class="bg-yellow-700 p-1 rounded text-xs border border-yellow-500 text-yellow-100">
+                                            Entry: {foundPCEntry} - PC: {searchPC}
+                                        </div>
                                     </div>
                                 {/if}
                             {/if}
