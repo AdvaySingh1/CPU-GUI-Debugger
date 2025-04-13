@@ -21,6 +21,16 @@
         y: number;
     };
 
+    type RetireSignalInfo = {
+        lastActiveCycle: number;
+        index: number;
+    };
+
+    type DispatchInfo = {
+        lastActiveCycle: number;
+        pattern: string;
+    };
+
     let files: FileData[] = [];
     let error: string | null = null;
     let selectedFile: FileData | null = null;
@@ -29,8 +39,12 @@
     let expandedComponents = new Set<string>();
     let componentPositions = new Map<string, Position>();
     let searchCycle = '';
+    let searchPC = '';
     let searchError: string | null = null;
     let isDragging = false;
+    let retireSignals: RetireSignalInfo[] = [];
+    let lastDispatchActive: DispatchInfo | null = null;
+    let foundPCEntry: string | null = null;
 
     function getDisplayFileName(fullName: string): string {
         return fullName.replace('_svelte', '');
@@ -81,6 +95,68 @@
         cycles = parseCycles(file.content);
         currentCycleIndex = 0;
         expandedComponents.clear();
+        searchPC = '';
+        foundPCEntry = null;
+        analyzeRetireSignals();
+    }
+
+    function analyzeRetireSignals() {
+        retireSignals = [];
+        lastDispatchActive = null;
+        const robEntryMap = new Map<number, number>(); // Map of entry index to last active cycle
+
+        // Process each cycle
+        for (const cycle of cycles) {
+            // Find the ROB Signals component
+            const robComponent = cycle.components.find(comp => comp.name.includes('ROB Signals'));
+            if (robComponent) {
+                // Parse the content to find En[x] signals
+                const lines = robComponent.content.split('\n');
+                for (const line of lines) {
+                    const match = line.match(/En\[(\d+)\]:\s*(\d+)/);
+                    if (match) {
+                        const entryIndex = parseInt(match[1]);
+                        const isEnabled = match[2] === '1';
+
+                        // If enabled, update the last active cycle for this entry
+                        if (isEnabled) {
+                            robEntryMap.set(entryIndex, cycle.cycle);
+                        }
+                    }
+                }
+            }
+
+            // Find the Dispatch component
+            const dispatchComponent = cycle.components.find(comp => comp.name.includes('Dispatch'));
+            if (dispatchComponent) {
+                // Parse the content to find En: signal
+                const lines = dispatchComponent.content.split('\n');
+                for (const line of lines) {
+                    const match = line.match(/En:\s*([01]+)/);
+                    if (match) {
+                        const pattern = match[1];
+                        // Check if at least one bit is high
+                        if (pattern.includes('1')) {
+                            lastDispatchActive = {
+                                lastActiveCycle: cycle.cycle,
+                                pattern: pattern
+                            };
+                        }
+                    }
+                }
+            }
+        }
+
+        // Convert the map to our result array
+        robEntryMap.forEach((lastCycle, index) => {
+            retireSignals.push({
+                index,
+                lastActiveCycle: lastCycle
+            });
+        });
+
+        // Sort by entry index
+        retireSignals.sort((a, b) => a.index - b.index);
     }
 
     function nextCycle() {
@@ -121,6 +197,51 @@
 
         searchError = null;
         currentCycleIndex = foundIndex;
+    }
+
+    function searchByPC() {
+        if (!searchPC.trim()) {
+            searchError = 'Please enter a PC value';
+            return;
+        }
+
+        // Reset the found PC entry
+        foundPCEntry = null;
+
+        // Normalize the PC value (remove leading zeros)
+        const normalizedPC = searchPC.replace(/^0+/, '');
+
+        // Search through all cycles
+        for (let i = 0; i < cycles.length; i++) {
+            const cycle = cycles[i];
+            // Find the Dispatch component
+            const dispatchComponent = cycle.components.find(comp => comp.name.includes('Dispatch'));
+            if (!dispatchComponent) continue;
+
+            // Parse the content to find PC values
+            const content = dispatchComponent.content;
+            const rsEntryMatches = [...content.matchAll(/RS_ENTRY\s*\[(\d+)\][\s\S]*?PC:\s*([0-9a-fA-F]+)/g)];
+
+            // Check each PC value
+            for (const match of rsEntryMatches) {
+                const entryIndex = match[1];
+                // Get the PC value and normalize it (remove leading zeros)
+                const pcValue = match[2].replace(/^0+/, '');
+
+                // If we found a match
+                if (pcValue === normalizedPC) {
+                    searchError = null;
+                    currentCycleIndex = i;
+                    foundPCEntry = `RS_ENTRY[${entryIndex}]`;
+                    // Ensure the Dispatch component is expanded
+                    expandedComponents.add('Dispatch');
+                    return;
+                }
+            }
+        }
+
+        // If we get here, no match was found
+        searchError = `PC ${searchPC} not found in any dispatch entry`;
     }
 
     function startDrag(event: MouseEvent, componentName: string) {
@@ -209,20 +330,39 @@
         <div class="border rounded p-2 bg-white shadow-sm">
             <div class="flex items-center justify-between mb-2">
                 <div class="flex gap-2 items-center">
-                    <div class="flex items-center gap-1">
-                        <input
-                            type="number"
-                            bind:value={searchCycle}
-                            placeholder="Search cycle..."
-                            class="px-1 py-0.5 border rounded w-24 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
-                            on:keydown={(e) => e.key === 'Enter' && searchByCycle()}
-                        />
-                        <button
-                            class="bg-gray-700 text-white px-2 py-0.5 rounded text-sm hover:bg-gray-600"
-                            on:click={searchByCycle}
-                        >
-                            Go
-                        </button>
+                    <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-1">
+                            <input
+                                type="number"
+                                bind:value={searchCycle}
+                                placeholder="Search cycle..."
+                                class="px-1 py-0.5 border rounded w-24 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+                                on:keydown={(e) => e.key === 'Enter' && searchByCycle()}
+                            />
+                            <button
+                                class="bg-gray-700 text-white px-2 py-0.5 rounded text-sm hover:bg-gray-600"
+                                on:click={searchByCycle}
+                            >
+                                Go
+                            </button>
+                        </div>
+
+                        <div class="flex items-center gap-1">
+                            <input
+                                type="text"
+                                bind:value={searchPC}
+                                placeholder="Search PC..."
+                                class="px-1 py-0.5 border rounded w-24 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+                                on:keydown={(e) => e.key === 'Enter' && searchByPC()}
+                                on:input={() => { if (!searchPC) foundPCEntry = null; }}
+                            />
+                            <button
+                                class="bg-green-700 text-white px-2 py-0.5 rounded text-sm hover:bg-green-600"
+                                on:click={searchByPC}
+                            >
+                                Find PC
+                            </button>
+                        </div>
                     </div>
                     <button
                         class="bg-gray-200 px-2 py-0.5 rounded text-sm {currentCycleIndex === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-300'}"
@@ -279,6 +419,37 @@
                                 <pre class="p-1 bg-white whitespace-pre-wrap text-xs overflow-x-auto">
                                     <code>{component.content}</code>
                                 </pre>
+
+                                {#if component.name.includes('ROB Signals') && retireSignals.length > 0}
+                                    <div class="p-2 bg-blue-50 border-t border-blue-200">
+                                        <h4 class="font-semibold text-xs text-blue-700 mb-1">Last Active Retire Signals:</h4>
+                                        <div class="grid grid-cols-3 gap-1 text-xs">
+                                            {#each retireSignals as signal}
+                                                <div class="bg-blue-100 p-1 rounded">
+                                                    Entry[{signal.index}]: Cycle {signal.lastActiveCycle}
+                                                </div>
+                                            {/each}
+                                        </div>
+                                    </div>
+                                {/if}
+
+                                {#if component.name.includes('Dispatch')}
+                                    <div class="p-2 bg-green-50 border-t border-green-200">
+                                        {#if lastDispatchActive}
+                                            <h4 class="font-semibold text-xs text-green-700 mb-1">Last Active Dispatch Signal:</h4>
+                                            <div class="bg-green-100 p-1 rounded text-xs mb-2">
+                                                Cycle {lastDispatchActive.lastActiveCycle}: En: {lastDispatchActive.pattern}
+                                            </div>
+                                        {/if}
+
+                                        {#if foundPCEntry}
+                                            <h4 class="font-semibold text-xs text-green-700 mb-1">Found PC Match:</h4>
+                                            <div class="bg-yellow-100 p-1 rounded text-xs border border-yellow-300">
+                                                Entry: {foundPCEntry} - PC: {searchPC}
+                                            </div>
+                                        {/if}
+                                    </div>
+                                {/if}
                             {/if}
                         </div>
                     </div>
