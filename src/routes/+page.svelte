@@ -66,6 +66,8 @@
     let searchComponentTerm = '';
     let searchComponentResults: string[] = [];
     let focusedComponent: string | null = null;
+    let sidebarCollapsed = false;
+    let compactMode = false;
 
     function getDisplayFileName(fullName: string): string {
         return fullName.replace('_svelte', '');
@@ -757,9 +759,24 @@
                 <div class="text-red-500 text-xs mb-2">{searchError}</div>
             {/if}
 
-            <div class="flex h-full">
+            <div class="flex h-full relative">
+                <!-- Toggle sidebar button -->
+                <button
+                    class="absolute top-0 {sidebarCollapsed ? 'left-0' : 'left-[200px]'} z-20 bg-gray-800 p-1 rounded-r border border-gray-700 hover:bg-gray-700 transition-all duration-200"
+                    on:click={() => sidebarCollapsed = !sidebarCollapsed}
+                    aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        {#if sidebarCollapsed}
+                            <polyline points="9 18 15 12 9 6"></polyline>
+                        {:else}
+                            <polyline points="15 18 9 12 15 6"></polyline>
+                        {/if}
+                    </svg>
+                </button>
+
                 <!-- Left sidebar for collapsed components -->
-                <div class="w-[200px] flex flex-col gap-1 pr-2 border-r border-gray-700 mr-2 bg-gray-900">
+                <div class="{sidebarCollapsed ? 'w-0 opacity-0 overflow-hidden' : 'w-[200px] opacity-100'} flex flex-col gap-1 pr-2 border-r border-gray-700 mr-2 bg-gray-900 transition-all duration-200">
                     <div class="mb-2">
                         <input
                             type="text"
@@ -797,7 +814,33 @@
                 </div>
 
                 <!-- Main content area for expanded components -->
-                <div class="flex-1 relative min-h-[500px] bg-gray-900">
+                <div class="flex-1 relative min-h-[500px] bg-gray-900 transition-all duration-200">
+                    <!-- Toolbar -->
+                    <div class="flex justify-end mb-2 gap-2">
+                        <button
+                            class="px-2 py-1 text-xs rounded bg-gray-800 hover:bg-gray-700 border border-gray-700 flex items-center gap-1"
+                            on:click={() => compactMode = !compactMode}
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                {#if compactMode}
+                                    <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+                                {:else}
+                                    <rect x="8" y="8" width="8" height="8" rx="2"></rect>
+                                {/if}
+                            </svg>
+                            {compactMode ? 'Normal Mode' : 'Compact Mode'}
+                        </button>
+                        <button
+                            class="px-2 py-1 text-xs rounded bg-gray-800 hover:bg-gray-700 border border-gray-700 flex items-center gap-1"
+                            on:click={() => { expandedComponents.clear(); expandedComponents = expandedComponents; }}
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                            Close All
+                        </button>
+                    </div>
                     {#each cycles[currentCycleIndex]?.components || [] as component}
                         <!-- Only show in main area if expanded or focused -->
                         {#if expandedComponents.has(component.name)}
@@ -811,45 +854,94 @@
                                 <div
                                     class="{expandedComponents.has(component.name)
                                         ? component.name.toLowerCase().includes('free list')
-                                            ? 'w-[280px]'
-                                            : 'min-w-[300px] max-w-[800px]'
+                                            ? compactMode ? 'w-[240px]' : 'w-[280px]'
+                                            : compactMode ? 'min-w-[240px] max-w-[600px]' : 'min-w-[300px] max-w-[800px]'
                                         : 'w-[200px]'}
-                                    border border-gray-700 rounded overflow-hidden transition-all duration-200 bg-gray-800 shadow-md"
+                                    border border-gray-700 rounded overflow-hidden transition-all duration-200 bg-gray-800 shadow-md {compactMode ? 'text-[10px]' : ''}"
                                 >
-                                    <button
-                                        type="button"
-                                        class="component-header bg-gray-700 p-1 cursor-move hover:bg-gray-600 flex justify-between items-center w-full text-left text-gray-100"
-                                        on:click={() => toggleComponent(component.name)}
-                                        on:keydown={(e) => e.key === 'Enter' && toggleComponent(component.name)}
+                                    <div
+                                        class="component-header bg-gray-700 p-1 flex justify-between items-center w-full text-left text-gray-100"
                                     >
                                         <div
-                                            class="flex items-center gap-1 flex-1"
+                                            class="flex items-center justify-between flex-1 w-full"
                                         >
-                                            <div
-                                                class="drag-handle p-1 cursor-move"
-                                                role="button"
-                                                tabindex="0"
-                                                aria-label="Drag component"
-                                                on:mousedown={(e) => startDrag(e, component.name)}
-                                                on:keydown={(e) => e.key === 'Enter' && toggleComponent(component.name)}
-                                            >
-                                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                                    <circle cx="9" cy="5" r="1"/>
-                                                    <circle cx="9" cy="12" r="1"/>
-                                                    <circle cx="9" cy="19" r="1"/>
-                                                    <circle cx="15" cy="5" r="1"/>
-                                                    <circle cx="15" cy="12" r="1"/>
-                                                    <circle cx="15" cy="19" r="1"/>
-                                                </svg>
+                                            <div class="flex items-center gap-1">
+                                                <div
+                                                    class="drag-handle p-1 cursor-move"
+                                                    role="button"
+                                                    tabindex="0"
+                                                    aria-label="Drag component"
+                                                    on:mousedown={(e) => startDrag(e, component.name)}
+                                                    on:keydown={(e) => e.key === 'Enter' && toggleComponent(component.name)}
+                                                >
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="{compactMode ? '10' : '12'}" height="{compactMode ? '10' : '12'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                        <circle cx="9" cy="5" r="1"/>
+                                                        <circle cx="9" cy="12" r="1"/>
+                                                        <circle cx="9" cy="19" r="1"/>
+                                                        <circle cx="15" cy="5" r="1"/>
+                                                        <circle cx="15" cy="12" r="1"/>
+                                                        <circle cx="15" cy="19" r="1"/>
+                                                    </svg>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    class="font-semibold text-gray-100 {compactMode ? 'text-[10px]' : 'text-xs'} hover:underline"
+                                                    on:click={() => toggleComponent(component.name)}
+                                                    on:keydown={(e) => e.key === 'Enter' && toggleComponent(component.name)}
+                                                >
+                                                    {component.name}
+                                                </button>
                                             </div>
-                                            <h3 class="font-semibold text-gray-100 text-xs">{component.name}</h3>
+
+                                            <div class="flex items-center gap-1">
+                                                <div
+                                                    class="p-1 hover:bg-gray-600 rounded {compactMode ? 'text-[10px]' : 'text-xs'} cursor-pointer"
+                                                    title="Center component"
+                                                    role="button"
+                                                    tabindex="0"
+                                                    on:click={(e) => {
+                                                        e.stopPropagation();
+                                                        const container = document.querySelector('.flex-1.relative.min-h-\\[500px\\]') as HTMLElement;
+                                                        if (container) {
+                                                            const centerX = container.offsetWidth / 2 - 150;
+                                                            const centerY = container.offsetHeight / 2 - 100;
+                                                            componentPositions.set(component.name, { x: centerX, y: centerY });
+                                                        }
+                                                    }}
+                                                    on:keydown={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                            e.stopPropagation();
+                                                            const container = document.querySelector('.flex-1.relative.min-h-\\[500px\\]') as HTMLElement;
+                                                            if (container) {
+                                                                const centerX = container.offsetWidth / 2 - 150;
+                                                                const centerY = container.offsetHeight / 2 - 100;
+                                                                componentPositions.set(component.name, { x: centerX, y: centerY });
+                                                            }
+                                                        }
+                                                    }}
+                                                >
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="{compactMode ? '10' : '12'}" height="{compactMode ? '10' : '12'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                        <circle cx="12" cy="12" r="10"></circle>
+                                                        <circle cx="12" cy="12" r="3"></circle>
+                                                    </svg>
+                                                </div>
+                                                <div
+                                                    class="p-1 hover:bg-gray-600 rounded {compactMode ? 'text-[10px]' : 'text-xs'} cursor-pointer"
+                                                    title="Toggle component"
+                                                    role="button"
+                                                    tabindex="0"
+                                                    on:click={() => toggleComponent(component.name)}
+                                                    on:keydown={(e) => e.key === 'Enter' && toggleComponent(component.name)}
+                                                >
+                                                    <span class="text-gray-300 {compactMode ? 'text-[10px]' : 'text-xs'}">
+                                                        {expandedComponents.has(component.name) ? '▼' : '▶'}
+                                                    </span>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <span class="text-gray-300 text-xs px-1">
-                                            {expandedComponents.has(component.name) ? '▼' : '▶'}
-                                        </span>
-                                    </button>
+                                    </div>
                                     {#if expandedComponents.has(component.name)}
-                                        <pre class="p-1 bg-gray-900 text-gray-100 whitespace-pre-wrap text-xs overflow-x-auto">
+                                        <pre class="{compactMode ? 'p-0.5' : 'p-1'} bg-gray-900 text-gray-100 whitespace-pre-wrap {compactMode ? 'text-[10px]' : 'text-xs'} overflow-x-auto">
                                             <code>{component.content}</code>
                                         </pre>
 
