@@ -63,6 +63,9 @@
     let lastRetireActive: RetireEnableInfo | null = null;
     let foundPCEntry: string | null = null;
     let foundPCComponent: string | null = null;
+    let searchComponentTerm = '';
+    let searchComponentResults: string[] = [];
+    let focusedComponent: string | null = null;
 
     function getDisplayFileName(fullName: string): string {
         return fullName.replace('_svelte', '');
@@ -226,10 +229,56 @@
     function toggleComponent(componentName: string) {
         if (expandedComponents.has(componentName)) {
             expandedComponents.delete(componentName);
+            focusedComponent = null;
         } else {
             expandedComponents.add(componentName);
+            focusedComponent = componentName;
+
+            // If the component doesn't have a position yet, center it
+            if (!componentPositions.has(componentName)) {
+                const container = document.querySelector('.flex-1.relative.min-h-\[500px\]') as HTMLElement;
+                if (container) {
+                    const centerX = container.offsetWidth / 2 - 150; // Approximate half width of component
+                    const centerY = container.offsetHeight / 2 - 100; // Approximate half height of component
+                    componentPositions.set(componentName, { x: centerX, y: centerY });
+                }
+            }
         }
         expandedComponents = expandedComponents; // trigger reactivity
+    }
+
+    function searchComponents() {
+        if (!searchComponentTerm.trim()) {
+            searchComponentResults = [];
+            return;
+        }
+
+        const currentComponents = cycles[currentCycleIndex]?.components || [];
+        const term = searchComponentTerm.toLowerCase();
+
+        // Find components that start with the search term
+        searchComponentResults = currentComponents
+            .filter(comp => comp.name.toLowerCase().startsWith(term))
+            .map(comp => comp.name)
+            .slice(0, 3); // Limit to 3 results
+    }
+
+    function selectSearchedComponent(componentName: string) {
+        focusedComponent = componentName;
+        expandedComponents.add(componentName);
+        expandedComponents = expandedComponents; // trigger reactivity
+        searchComponentTerm = '';
+        searchComponentResults = [];
+
+        // If the component doesn't have a position yet, center it
+        if (!componentPositions.has(componentName)) {
+            const container = document.querySelector('.flex-1.relative.min-h-\[500px\]') as HTMLElement;
+            if (container) {
+                const centerX = container.offsetWidth / 2 - 150; // Approximate half width of component
+                const centerY = container.offsetHeight / 2 - 100; // Approximate half height of component
+                componentPositions.set(componentName, { x: centerX, y: centerY });
+            }
+        }
     }
 
     function searchByCycle() {
@@ -532,11 +581,22 @@
     }
 
     function startDrag(event: MouseEvent, componentName: string) {
+        // Don't start drag if we're not clicking on the drag handle
+        if (!(event.target as HTMLElement).closest('.drag-handle')) {
+            return;
+        }
         // Prevent default to avoid text selection during drag
         event.preventDefault();
 
         // Stop event propagation to prevent conflicts with other handlers
         event.stopPropagation();
+
+        // Prevent the click event from firing after drag
+        const handleClick = (e: Event) => {
+            e.stopPropagation();
+            document.removeEventListener('click', handleClick, true);
+        };
+        document.addEventListener('click', handleClick, true);
 
         isDragging = true;
         const componentElement = document.querySelector(`[data-component="${componentName}"]`) as HTMLElement;
@@ -687,93 +747,157 @@
                 <div class="text-red-500 text-xs mb-2">{searchError}</div>
             {/if}
 
-            <div class="relative min-h-[500px]">
-                {#each cycles[currentCycleIndex]?.components || [] as component}
-                    <div
-                        class="mb-2 inline-block component-container"
-                        style="{componentPositions.has(component.name) ? `position: absolute; left: ${componentPositions.get(component.name)?.x}px; top: ${componentPositions.get(component.name)?.y}px; z-index: ${expandedComponents.has(component.name) ? '10' : '1'};` : ''}"
-                        data-component={component.name}
-                        role="region"
-                        aria-label={`Component ${component.name}`}
-                    >
-                        <div
-                            class="{expandedComponents.has(component.name)
-                                ? component.name.toLowerCase().includes('free list')
-                                    ? 'w-[280px]'
-                                    : 'min-w-[300px] max-w-[800px]'
-                                : 'w-[200px]'}
-                            border border-gray-700 rounded overflow-hidden transition-all duration-200 bg-gray-800 shadow-md"
-                        >
-                            <button
-                                type="button"
-                                class="component-header bg-gray-700 p-1 cursor-move hover:bg-gray-600 flex justify-between items-center w-full text-left text-gray-100"
-                                on:click={() => toggleComponent(component.name)}
-                                on:keydown={(e) => e.key === 'Enter' && toggleComponent(component.name)}
-                                on:mousedown={(e) => startDrag(e, component.name)}
-                            >
-                                <h3 class="font-semibold text-gray-100 text-xs px-1">{component.name}</h3>
-                                <span class="text-gray-300 text-xs px-1">
-                                    {expandedComponents.has(component.name) ? '▼' : '▶'}
-                                </span>
-                            </button>
-                            {#if expandedComponents.has(component.name)}
-                                <pre class="p-1 bg-gray-900 text-gray-100 whitespace-pre-wrap text-xs overflow-x-auto">
-                                    <code>{component.content}</code>
-                                </pre>
-
-                                {#if component.name.includes('ROB')}
-                                    <div class="p-2 bg-blue-900 border-t border-blue-700">
-                                        {#if lastRetireActive}
-                                            <h4 class="font-semibold text-xs text-blue-200 mb-1">Last Cycle With Any Active ROB Enable:</h4>
-                                            <div class="bg-blue-800 p-1 rounded text-xs text-blue-100">
-                                                Cycle {lastRetireActive.lastActiveCycle}: Pattern: {lastRetireActive.pattern}
-                                            </div>
-                                        {/if}
-                                    </div>
-                                {/if}
-
-                                {#if component.name.includes('Dispatch')}
-                                    <div class="p-2 bg-green-900 border-t border-green-700">
-                                        {#if lastDispatchActive}
-                                            <h4 class="font-semibold text-xs text-green-200 mb-1">Last Active Dispatch Signal:</h4>
-                                            <div class="bg-green-800 p-1 rounded text-xs mb-2 text-green-100">
-                                                Cycle {lastDispatchActive.lastActiveCycle}: En: {lastDispatchActive.pattern}
-                                            </div>
-                                        {/if}
-
-                                        {#if foundPCEntry && foundPCComponent === 'Dispatch'}
-                                            <h4 class="font-semibold text-xs text-green-200 mb-1">Found PC Match:</h4>
-                                            <div class="bg-yellow-700 p-1 rounded text-xs border border-yellow-500 text-yellow-100">
-                                                Entry: {foundPCEntry} - PC: {searchPC}
-                                            </div>
-                                        {/if}
-                                    </div>
-                                {/if}
-
-                                {#if component.name.includes('Issue') && foundPCComponent === 'Issue' && foundPCEntry}
-                                    <div class="p-2 bg-blue-900 border-t border-blue-700">
-                                        <h4 class="font-semibold text-xs text-blue-200 mb-1">Found PC Match:</h4>
-                                        <div class="bg-yellow-700 p-1 rounded text-xs border border-yellow-500 text-yellow-100">
-                                            Entry: {foundPCEntry} - PC: {searchPC}
-                                        </div>
-                                    </div>
-                                {/if}
-
-                                {#if component.name.includes('Retire')}
-                                    <div class="p-2 bg-purple-900 border-t border-purple-700">
-
-                                        {#if foundPCComponent === 'Retire' && foundPCEntry}
-                                            <h4 class="font-semibold text-xs text-purple-200 mb-1">Found PC Match:</h4>
-                                            <div class="bg-yellow-700 p-1 rounded text-xs border border-yellow-500 text-yellow-100">
-                                                Entry: {foundPCEntry} - PC: {searchPC}
-                                            </div>
-                                        {/if}
-                                    </div>
-                                {/if}
-                            {/if}
-                        </div>
+            <div class="flex">
+                <!-- Left sidebar for collapsed components -->
+                <div class="w-[200px] flex flex-col gap-1 pr-2 border-r border-gray-700 mr-2">
+                    <div class="mb-2">
+                        <input
+                            type="text"
+                            bind:value={searchComponentTerm}
+                            placeholder="Search components..."
+                            class="px-1 py-0.5 border border-gray-600 rounded w-full text-sm bg-gray-700 text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                            on:input={searchComponents}
+                            on:keydown={(e) => e.key === 'Enter' && searchComponentResults.length > 0 && selectSearchedComponent(searchComponentResults[0])}
+                        />
+                        {#if searchComponentResults.length > 0}
+                            <div class="absolute z-20 mt-1 w-[180px] bg-gray-800 border border-gray-700 rounded shadow-lg">
+                                {#each searchComponentResults as result}
+                                    <button
+                                        class="w-full text-left px-2 py-1 text-sm text-gray-100 hover:bg-gray-700"
+                                        on:click={() => selectSearchedComponent(result)}
+                                    >
+                                        {result}
+                                    </button>
+                                {/each}
+                            </div>
+                        {/if}
                     </div>
-                {/each}
+
+                    {#each cycles[currentCycleIndex]?.components || [] as component}
+                        <!-- Only show in sidebar if not expanded or focused -->
+                        {#if !expandedComponents.has(component.name) || component.name !== focusedComponent}
+                            <button
+                                class="text-left px-2 py-1 text-xs text-gray-100 bg-gray-800 hover:bg-gray-700 rounded truncate"
+                                on:click={() => selectSearchedComponent(component.name)}
+                            >
+                                {component.name}
+                            </button>
+                        {/if}
+                    {/each}
+                </div>
+
+                <!-- Main content area for expanded components -->
+                <div class="flex-1 relative min-h-[500px]">
+                    {#each cycles[currentCycleIndex]?.components || [] as component}
+                        <!-- Only show in main area if expanded or focused -->
+                        {#if expandedComponents.has(component.name)}
+                            <div
+                                class="mb-2 inline-block component-container {component.name === focusedComponent ? 'z-10' : 'z-1'}"
+                                style="{componentPositions.has(component.name) ? `position: absolute; left: ${componentPositions.get(component.name)?.x}px; top: ${componentPositions.get(component.name)?.y}px;` : ''}"
+                                data-component={component.name}
+                                role="region"
+                                aria-label={`Component ${component.name}`}
+                            >
+                                <div
+                                    class="{expandedComponents.has(component.name)
+                                        ? component.name.toLowerCase().includes('free list')
+                                            ? 'w-[280px]'
+                                            : 'min-w-[300px] max-w-[800px]'
+                                        : 'w-[200px]'}
+                                    border border-gray-700 rounded overflow-hidden transition-all duration-200 bg-gray-800 shadow-md"
+                                >
+                                    <button
+                                        type="button"
+                                        class="component-header bg-gray-700 p-1 cursor-move hover:bg-gray-600 flex justify-between items-center w-full text-left text-gray-100"
+                                        on:click={() => toggleComponent(component.name)}
+                                        on:keydown={(e) => e.key === 'Enter' && toggleComponent(component.name)}
+                                    >
+                                        <div
+                                            class="flex items-center gap-1 flex-1"
+                                        >
+                                            <div
+                                                class="drag-handle p-1 cursor-move"
+                                                role="button"
+                                                tabindex="0"
+                                                aria-label="Drag component"
+                                                on:mousedown={(e) => startDrag(e, component.name)}
+                                                on:keydown={(e) => e.key === 'Enter' && toggleComponent(component.name)}
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                    <circle cx="9" cy="5" r="1"/>
+                                                    <circle cx="9" cy="12" r="1"/>
+                                                    <circle cx="9" cy="19" r="1"/>
+                                                    <circle cx="15" cy="5" r="1"/>
+                                                    <circle cx="15" cy="12" r="1"/>
+                                                    <circle cx="15" cy="19" r="1"/>
+                                                </svg>
+                                            </div>
+                                            <h3 class="font-semibold text-gray-100 text-xs">{component.name}</h3>
+                                        </div>
+                                        <span class="text-gray-300 text-xs px-1">
+                                            {expandedComponents.has(component.name) ? '▼' : '▶'}
+                                        </span>
+                                    </button>
+                                    {#if expandedComponents.has(component.name)}
+                                        <pre class="p-1 bg-gray-900 text-gray-100 whitespace-pre-wrap text-xs overflow-x-auto">
+                                            <code>{component.content}</code>
+                                        </pre>
+
+                                        {#if component.name.includes('ROB')}
+                                            <div class="p-2 bg-blue-900 border-t border-blue-700">
+                                                {#if lastRetireActive}
+                                                    <h4 class="font-semibold text-xs text-blue-200 mb-1">Last Cycle With Any Active ROB Enable:</h4>
+                                                    <div class="bg-blue-800 p-1 rounded text-xs text-blue-100">
+                                                        Cycle {lastRetireActive.lastActiveCycle}: Pattern: {lastRetireActive.pattern}
+                                                    </div>
+                                                {/if}
+                                            </div>
+                                        {/if}
+
+                                        {#if component.name.includes('Dispatch')}
+                                            <div class="p-2 bg-green-900 border-t border-green-700">
+                                                {#if lastDispatchActive}
+                                                    <h4 class="font-semibold text-xs text-green-200 mb-1">Last Active Dispatch Signal:</h4>
+                                                    <div class="bg-green-800 p-1 rounded text-xs mb-2 text-green-100">
+                                                        Cycle {lastDispatchActive.lastActiveCycle}: En: {lastDispatchActive.pattern}
+                                                    </div>
+                                                {/if}
+
+                                                {#if foundPCEntry && foundPCComponent === 'Dispatch'}
+                                                    <h4 class="font-semibold text-xs text-green-200 mb-1">Found PC Match:</h4>
+                                                    <div class="bg-yellow-700 p-1 rounded text-xs border border-yellow-500 text-yellow-100">
+                                                        Entry: {foundPCEntry} - PC: {searchPC}
+                                                    </div>
+                                                {/if}
+                                            </div>
+                                        {/if}
+
+                                        {#if component.name.includes('Issue') && foundPCComponent === 'Issue' && foundPCEntry}
+                                            <div class="p-2 bg-blue-900 border-t border-blue-700">
+                                                <h4 class="font-semibold text-xs text-blue-200 mb-1">Found PC Match:</h4>
+                                                <div class="bg-yellow-700 p-1 rounded text-xs border border-yellow-500 text-yellow-100">
+                                                    Entry: {foundPCEntry} - PC: {searchPC}
+                                                </div>
+                                            </div>
+                                        {/if}
+
+                                        {#if component.name.includes('Retire')}
+                                            <div class="p-2 bg-purple-900 border-t border-purple-700">
+
+                                                {#if foundPCComponent === 'Retire' && foundPCEntry}
+                                                    <h4 class="font-semibold text-xs text-purple-200 mb-1">Found PC Match:</h4>
+                                                    <div class="bg-yellow-700 p-1 rounded text-xs border border-yellow-500 text-yellow-100">
+                                                        Entry: {foundPCEntry} - PC: {searchPC}
+                                                    </div>
+                                                {/if}
+                                            </div>
+                                        {/if}
+                                    {/if}
+                                </div>
+                            </div>
+                        {/if}
+                    {/each}
+                </div>
             </div>
         </div>
     {/if}
